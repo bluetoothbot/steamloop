@@ -178,6 +178,43 @@ async def test_disconnect_notifies_unavailable(
     assert states == [False]
 
 
+def test_close_transport_marks_unavailable(
+    connection: ThermostatConnection,
+) -> None:
+    """Tearing down the transport must clear availability.
+
+    The reconnect loop closes the transport directly (without going through
+    ``_on_connection_lost``); availability must not stay latched True while
+    the connection is gone.
+    """
+    states: list[bool] = []
+    connection.add_connection_callback(states.append)
+    connection._available = True  # simulate a prior successful login
+    connection._close_transport()
+    assert connection.available is False
+    assert states == [False]
+
+
+async def test_login_after_lost_connection_does_not_latch_available(
+    connection: ThermostatConnection,
+) -> None:
+    """A drop racing a successful login must not leave ``available`` True."""
+    states: list[bool] = []
+    connection.add_connection_callback(states.append)
+    # The transport dies while still unavailable, so this notification is a
+    # no-op — then the in-flight login succeeds and latches available True.
+    connection._on_connection_lost(ConnectionResetError("reset"))
+    resp = {"Response": {"LoginResponse": {"status": "1"}}}
+    task = asyncio.create_task(_feed_response(connection, resp))
+    with patch("steamloop.connection.INITIAL_STATE_TIMEOUT", 0.05):
+        await connection.login()
+    await task
+    # The run loop then tears the dead transport down; availability must follow.
+    connection._close_transport()
+    assert connection.available is False
+    assert states == [True, False]
+
+
 # ---------------------------------------------------------------------------
 # Event dispatch — all 11 handlers
 # ---------------------------------------------------------------------------

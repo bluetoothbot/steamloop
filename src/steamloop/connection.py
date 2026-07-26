@@ -388,6 +388,11 @@ class ThermostatConnection:
     def _close_transport(self) -> None:
         """Close the underlying transport."""
         self._connected = False
+        # Authoritative unavailability point: the reconnect loop tears the
+        # transport down directly, and a login can win a race against an
+        # already-fired _on_connection_lost. Without this, availability
+        # latches True while the connection is gone.
+        self._notify_connection_state(False)
         if self._protocol is not None:
             self._protocol.close()
             self._protocol = None
@@ -730,7 +735,6 @@ class ThermostatConnection:
                 await self._run_task
             self._run_task = None
         self._close_transport()
-        self._notify_connection_state(False)
         _LOGGER.info("Disconnected")
 
     async def __aenter__(self) -> Self:

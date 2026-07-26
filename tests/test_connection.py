@@ -215,6 +215,38 @@ async def test_login_after_lost_connection_does_not_latch_available(
     assert states == [True, False]
 
 
+def test_stale_connection_lost_ignored(
+    connection: ThermostatConnection,
+) -> None:
+    """A superseded transport must not clobber the live connection's state.
+
+    ``transport.close()`` on a TLS transport is asynchronous — ``connection_lost``
+    can fire seconds later, after the reconnect loop already established a new
+    connection. That late callback must be ignored, otherwise it marks a healthy
+    connection unavailable and re-triggers the reconnect loop.
+    """
+    stale = connection._protocol
+    assert stale is not None
+    connection._close_transport()  # supersedes `stale`
+
+    # Reconnect: new protocol, fresh state.
+    fresh = ThermostatProtocol(connection)
+    fresh.connection_made(cast("asyncio.Transport", MagicMock(spec=asyncio.Transport)))
+    connection._protocol = fresh
+    connection._connected = True
+    connection._notify_connection_state(True)
+    connection._connection_lost_event.clear()
+
+    states: list[bool] = []
+    connection.add_connection_callback(states.append)
+    stale.connection_lost(ConnectionResetError("late close_notify"))
+
+    assert connection.connected is True
+    assert connection.available is True
+    assert connection._connection_lost_event.is_set() is False
+    assert states == []
+
+
 # ---------------------------------------------------------------------------
 # Event dispatch — all 11 handlers
 # ---------------------------------------------------------------------------

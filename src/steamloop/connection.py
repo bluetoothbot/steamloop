@@ -156,6 +156,13 @@ class ThermostatProtocol(asyncio.Protocol):
 
     def connection_lost(self, exc: Exception | None) -> None:
         """Called when the connection is lost."""
+        # A TLS transport.close() completes asynchronously, so this can fire
+        # long after close() detached us and the reconnect loop built a new
+        # connection. Reporting it then would mark a healthy connection
+        # unavailable and restart the reconnect loop.
+        if self._transport is None:
+            return
+        self._transport = None
         self._connection._on_connection_lost(exc)  # noqa: SLF001
 
     def send(self, msg: dict[str, Any]) -> None:

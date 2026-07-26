@@ -558,17 +558,17 @@ class ThermostatConnection:
         often than INITIAL_STATE_TIMEOUT would otherwise keep login() — and
         the reconnect loop awaiting it — here forever.
         """
-        loop = asyncio.get_running_loop()
-        deadline = loop.time() + RESPONSE_TIMEOUT
-        while (left := deadline - loop.time()) > 0:
-            try:
-                msg = await asyncio.wait_for(
-                    queue.get(), timeout=min(INITIAL_STATE_TIMEOUT, left)
-                )
-            except TimeoutError:
-                return
-            if msg is None:
-                raise SteamloopConnectionError("Connection lost during login")
+        with contextlib.suppress(TimeoutError):
+            async with asyncio.timeout(RESPONSE_TIMEOUT):
+                while True:
+                    try:
+                        msg = await asyncio.wait_for(
+                            queue.get(), timeout=INITIAL_STATE_TIMEOUT
+                        )
+                    except TimeoutError:
+                        return
+                    if msg is None:
+                        raise SteamloopConnectionError("Connection lost during login")
 
     async def pair(self) -> SetSecretKeyRequest:
         """

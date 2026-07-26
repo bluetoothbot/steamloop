@@ -686,7 +686,7 @@ def test_on_connection_lost_without_exception(
 def test_on_message_queues_when_queue_set(
     connection: ThermostatConnection,
 ) -> None:
-    queue: asyncio.Queue[dict[str, Any]] = asyncio.Queue()
+    queue: asyncio.Queue[dict[str, Any] | None] = asyncio.Queue()
     connection._message_queue = queue
     msg: dict[str, Any] = {"Heartbeat": {}}
     connection._on_message(msg)
